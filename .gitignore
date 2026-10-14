@@ -1,0 +1,14 @@
+# Shopee Chrome profile (sensitive cookies and session data)
+shopee_chrome_profile/
+
+# Python cache & virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# OS metadata
+.DS_Store
+Thumbs.db
