@@ -38,3 +38,12 @@ python clean_reviews.py
 - File kết quả sau khi làm sạch sẽ được lưu vào thư mục `cleaned_reviews/` gồm 2 định dạng:
   - `.csv` (mở tốt trên Excel với mã hóa UTF-8 BOM)
   - `.json`
+
+### 3. Pipeline làm sạch cho phân loại cảm xúc (`vi_clean/`)
+Gộp UIT-VSFC (đặt vào `data/uit_vsfc/<split>/sents.txt` + `sentiments.txt`) với `raw_reviews/*.json`, rồi chạy 5 bước: NFC, regex, teencode, loại trùng MD5, lọc TTR thấp.
+```powershell
+python -m vi_clean.merge        # ghi data/clean/dataset.csv và report.json
+uvicorn vi_clean.api:app        # POST /clean, /clean/batch, /jobs/merge-clean
+```
+- Từ điển teencode: `vi_clean/data/teencode_v1.json` (sửa tay, có `version`).
+- Mọi tham số nằm trong `vi_clean/config.py`; `report.json` so sánh số mẫu cuối với 34,250 và ghi rõ chênh lệch.
