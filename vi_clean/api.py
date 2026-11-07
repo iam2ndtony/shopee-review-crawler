@@ -4,7 +4,9 @@ Run: uvicorn vi_clean.api:app
 The per-text stages run per request; MD5 duplicate detection is dataset-level and only
 happens inside /jobs/merge-clean (it needs the whole dataset).
 """
+import dataclasses
 import threading
+from typing import Annotated
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -43,6 +45,58 @@ def clean(body: CleanIn) -> dict:
 @app.post("/clean/batch")
 def clean_batch(body: BatchIn) -> dict:
     return {"results": _clean(body.texts)}
+
+
+MAX_PREDICT_CHARS = 5000  # cleaning + word segmentation run on the full text before truncation to max_len
+
+
+class PredictIn(BaseModel):
+    text: str = Field(max_length=MAX_PREDICT_CHARS)
+
+
+class PredictBatchIn(BaseModel):
+    texts: list[Annotated[str, Field(max_length=MAX_PREDICT_CHARS)]] = Field(min_length=1, max_length=64)
+
+
+_clf = None
+_clf_lock = threading.Lock()
+
+
+def _classifier():
+    """Load the final checkpoint once, on first use (keeps torch out of /clean's startup)."""
+    global _clf
+    with _clf_lock:
+        if _clf is None:
+            from vi_train.config import TrainConfig
+            tcfg = TrainConfig()
+            path = tcfg.ckpt_dir / "final"
+            if not path.is_dir():
+                raise HTTPException(status_code=503, detail="Model not trained yet: checkpoints/final is missing")
+            from vi_train.predict import Classifier
+            _clf = Classifier.from_dir(path, tcfg)
+        return _clf
+
+
+def _predict(texts: list[str]) -> list[dict]:
+    clf = _classifier()
+    from vi_train.data import segment
+    # Training data was cleaned with lowercase off (PhoBERT is case-sensitive); match it here.
+    cleaned = clean_texts(pd.Series(texts, dtype=object), dataclasses.replace(cfg, lowercase=False), table)
+    probs = clf.probs([segment(t) for t in cleaned])
+    labels = clf.cfg.labels
+    return [{"cleaned": c, "label": labels[int(p.argmax())],
+             "probs": {lab: round(float(x), 4) for lab, x in zip(labels, p)}}
+            for c, p in zip(cleaned, probs)]
+
+
+@app.post("/predict")
+def predict(body: PredictIn) -> dict:
+    return _predict([body.text])[0]
+
+
+@app.post("/predict/batch")
+def predict_batch(body: PredictBatchIn) -> dict:
+    return {"results": _predict(body.texts)}
 
 
 @app.post("/jobs/merge-clean")

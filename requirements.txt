@@ -3,3 +3,6 @@ pandas
 numpy
 fastapi
 uvicorn
+torch
+transformers
+underthesea
