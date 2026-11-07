@@ -4,7 +4,11 @@ Macro-F1 averages only classes present in y_true: a product with no Neutral rows
 score a zero for a class it never had. Accuracy is reported last on purpose (it misleads
 under class imbalance).
 """
+import json
+import time
+
 import numpy as np
+import pandas as pd
 
 from .config import TrainConfig
 
@@ -52,3 +56,80 @@ def report(y_true: np.ndarray, y_pred: np.ndarray, cfg: TrainConfig) -> dict:
         "low_confidence": [lab for i, lab in enumerate(cfg.labels) if true[i] < cfg.low_conf_min],
         "accuracy": round(float((y_true == y_pred).mean()), 4),
     }
+
+
+def _stats(times: list[float]) -> dict:
+    return {"median_ms": round(float(np.median(times)), 2), "p95_ms": round(float(np.percentile(times, 95)), 2)}
+
+
+def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
+    """Per-review latency of the shipped model on 200 Shopee reviews, after warm-up."""
+    import torch
+    from .data import segment
+    from .predict import Classifier
+
+    clf = Classifier.from_dir(cfg.ckpt_dir / "final", cfg)
+    sample = oof.sample(n=min(200, len(oof)), random_state=cfg.seed)
+    segs, raws = sample["seg"].tolist(), sample["text"].tolist()
+    sync = torch.cuda.synchronize if torch.cuda.is_available() else (lambda: None)
+
+    def ms(fn) -> float:
+        sync()
+        t = time.perf_counter()
+        fn()
+        sync()
+        return (time.perf_counter() - t) * 1000
+
+    for _ in range(10):  # warm-up: CUDA kernels, allocator
+        clf.probs(segs[:1])
+        clf.probs(segs[:32])
+    chunks = [(segs[i:i + 32], raws[i:i + 32]) for i in range(0, len(segs), 32)]
+    return {
+        "model_forward": {
+            "batch1": _stats([ms(lambda s=s: clf.probs([s])) for s in segs]),
+            "batch32": _stats([ms(lambda c=c: clf.probs(c)) / len(c) for c, _ in chunks]),
+        },
+        "end_to_end": {  # word segmentation + tokenize + forward
+            "batch1": _stats([ms(lambda r=r: clf.probs([segment(r)])) for r in raws]),
+            "batch32": _stats([ms(lambda r=r: clf.probs([segment(x) for x in r])) / len(r) for _, r in chunks]),
+        },
+    }
+
+
+def main() -> None:
+    """Build reports/metrics.json from the prediction files written by train.py."""
+    cfg = TrainConfig()
+    k = len(cfg.labels)
+    preds = cfg.work_dir / "preds"
+
+    def load(name: str) -> pd.DataFrame:
+        return pd.read_csv(preds / name, encoding="utf-8", keep_default_na=False,
+                           dtype={"text": str, "seg": str, "product_id": str})
+
+    out: dict = {}
+    for key, fname in (("uit_vsfc_test_stage1", "uit_test_stage1.csv"), ("uit_vsfc_test_final", "uit_test_final.csv")):
+        d = load(fname)
+        out[key] = {"n": len(d), **report(d["y"].to_numpy(), d["pred"].to_numpy(), cfg)}
+    oof = load("shopee_oof.csv")
+    out["shopee_oof"] = {"n": len(oof), **report(oof["y"].to_numpy(), oof["pred"].to_numpy(), cfg)}
+    out["shopee_per_product"] = {
+        pid: {"n": len(g), "macro_f1": round(macro_f1(g["y"].to_numpy(), g["pred"].to_numpy(), k), 4),
+              "neutral_rows": int((g["y"] == 1).sum())}
+        for pid, g in oof.groupby("product_id")}
+    with open(preds / "train_log.json", encoding="utf-8") as f:
+        out["training"] = json.load(f)
+    out["latency"] = _latency(oof, cfg)
+    out["notes"] = [
+        "Held-out sets are not a human-labeled Gold Set; no kappa exists.",
+        f"Shopee Neutral evaluation rows: {out['shopee_oof']['per_class']['neutral']['n']}; intervals are wide.",
+        "Shopee labels are weak (star ratings); star-versus-text mismatches are not corrected.",
+        "UIT-VSFC uses this project's own 80/10/10 split, not comparable with published results.",
+    ]
+    cfg.report_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cfg.report_path, "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=2, ensure_ascii=False)
+    print(json.dumps({key: out[key] for key in ("uit_vsfc_test_final", "shopee_oof")}, indent=2))
+
+
+if __name__ == "__main__":
+    main()
