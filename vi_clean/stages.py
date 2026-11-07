@@ -20,7 +20,9 @@ from .teencode import compile_teencode
 
 _URL = re.compile(r"https?://\S+|www\.\S+")
 _EMAIL = re.compile(r"\S+@\S+\.\S+")
-_PHONE = re.compile(r"(?<!\d)(?:\+?84|0)[\d .-]{8,12}(?!\d)")
+# Phone shape (+84/0 + 2-3 + 3 + 3-4 digits), not preceded/followed by digits or . , so
+# prices like "100.000" and number lists are left alone.
+_PHONE = re.compile(r"(?<![\w.,])(?:\+?84|0)[ .-]?\d{2,3}[ .-]?\d{3}[ .-]?\d{3,4}(?![\w.,])")
 _HTML = re.compile(r"<[^>]+>")
 # Shopee review template prefixes (same list as clean_reviews.py).
 _TEMPLATE = re.compile(

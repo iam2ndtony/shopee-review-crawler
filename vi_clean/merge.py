@@ -6,6 +6,7 @@ filter to reach it. Dedup runs on the pooled data and nothing is split here.
 Run: python -m vi_clean.merge
 """
 import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -67,7 +68,9 @@ def run_job(cfg: CleanConfig = CleanConfig()) -> dict:
     n_ttr = n1 - len(df)
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(cfg.out_dir / "dataset.csv", index=False, encoding="utf-8")
+    tmp = cfg.out_dir / "dataset.csv.tmp"  # write then replace: readers never see a partial file
+    df.to_csv(tmp, index=False, encoding="utf-8")
+    os.replace(tmp, cfg.out_dir / "dataset.csv")
 
     total = len(df)
     labels = df["label"].value_counts().to_dict()
@@ -84,8 +87,10 @@ def run_job(cfg: CleanConfig = CleanConfig()) -> dict:
             "Fleiss' kappa cannot be reproduced: no Gold Test Set exists in this iteration.",
         ],
     }
-    with open(cfg.out_dir / "report.json", "w", encoding="utf-8") as f:
+    tmp = cfg.out_dir / "report.json.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False, default=int)
+    os.replace(tmp, cfg.out_dir / "report.json")
     return report
 
 

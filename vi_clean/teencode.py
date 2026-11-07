@@ -20,5 +20,7 @@ def compile_teencode(table: dict[str, str]) -> Callable[[str], str]:
     if not table:
         return lambda s: s
     keys = sorted(table, key=len, reverse=True)
-    pat = re.compile(r"(?<!\w)(" + "|".join(map(re.escape, keys)) + r")(?!\w)", re.IGNORECASE)
+    # "k" after a number ("50 k") is a price unit, not "không"; the other keys have no such clash.
+    alts = [r"(?<!\d )k" if k == "k" else re.escape(k) for k in keys]
+    pat = re.compile(r"(?<!\w)(" + "|".join(alts) + r")(?!\w)", re.IGNORECASE)
     return lambda s: pat.sub(lambda m: table[m.group(1).lower()], s)

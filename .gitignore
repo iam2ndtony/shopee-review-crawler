@@ -16,4 +16,4 @@ Thumbs.db
 # Claude worktrees
 .claude/worktrees/
 .superpowers/
-data/
+/data/
