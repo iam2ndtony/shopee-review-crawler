@@ -6,6 +6,7 @@ happens inside /jobs/merge-clean (it needs the whole dataset).
 """
 import dataclasses
 import threading
+from typing import Annotated
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -46,8 +47,15 @@ def clean_batch(body: BatchIn) -> dict:
     return {"results": _clean(body.texts)}
 
 
+MAX_PREDICT_CHARS = 5000  # cleaning + word segmentation run on the full text before truncation to max_len
+
+
+class PredictIn(BaseModel):
+    text: str = Field(max_length=MAX_PREDICT_CHARS)
+
+
 class PredictBatchIn(BaseModel):
-    texts: list[str] = Field(min_length=1, max_length=64)
+    texts: list[Annotated[str, Field(max_length=MAX_PREDICT_CHARS)]] = Field(min_length=1, max_length=64)
 
 
 _clf = None
@@ -82,7 +90,7 @@ def _predict(texts: list[str]) -> list[dict]:
 
 
 @app.post("/predict")
-def predict(body: CleanIn) -> dict:
+def predict(body: PredictIn) -> dict:
     return _predict([body.text])[0]
 
 

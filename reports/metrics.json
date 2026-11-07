@@ -6,6 +6,7 @@
       0.7925,
       0.8655
     ],
+    "macro_f1_ci_method": "rows",
     "per_class": {
       "negative": {
         "precision": 0.9462,
@@ -53,6 +54,7 @@
       0.687,
       0.7737
     ],
+    "macro_f1_ci_method": "rows",
     "per_class": {
       "negative": {
         "precision": 0.9663,
@@ -97,9 +99,10 @@
     "n": 3315,
     "macro_f1": 0.5363,
     "macro_f1_ci": [
-      0.5121,
-      0.5585
+      0.4216,
+      0.6167
     ],
+    "macro_f1_ci_method": "whole groups (5 products); rough with so few",
     "per_class": {
       "negative": {
         "precision": 0.4747,
@@ -179,31 +182,49 @@
     "final": 0.5438772105438772
   },
   "latency": {
-    "model_forward": {
-      "batch1": {
-        "median_ms": 19.83,
-        "p95_ms": 28.94
+    "batch1": {
+      "n_batches": 320,
+      "clean": {
+        "median_ms": 0.84,
+        "p95_ms": 1.25
       },
-      "batch32": {
-        "median_ms": 1.14,
-        "p95_ms": 2.65
+      "segment": {
+        "median_ms": 0.65,
+        "p95_ms": 1.56
+      },
+      "tokenize_forward": {
+        "median_ms": 11.81,
+        "p95_ms": 14.58
+      },
+      "end_to_end": {
+        "median_ms": 13.31,
+        "p95_ms": 16.54
       }
     },
-    "end_to_end": {
-      "batch1": {
-        "median_ms": 17.56,
-        "p95_ms": 26.36
+    "batch32": {
+      "n_batches": 10,
+      "clean": {
+        "median_ms": 0.06
       },
-      "batch32": {
-        "median_ms": 1.6,
-        "p95_ms": 3.0
+      "segment": {
+        "median_ms": 0.6
+      },
+      "tokenize_forward": {
+        "median_ms": 0.61
+      },
+      "end_to_end": {
+        "median_ms": 1.28
       }
     }
   },
   "notes": [
     "Held-out sets are not a human-labeled Gold Set; no kappa exists.",
-    "Shopee Neutral evaluation rows: 92; intervals are wide.",
+    "Shopee Neutral evaluation rows: 92; scores are rough.",
+    "Shopee interval resamples whole products (5), so it is wide and itself rough; UIT-VSFC intervals resample rows.",
     "Shopee labels are weak (star ratings); star-versus-text mismatches are not corrected.",
-    "UIT-VSFC uses this project's own 80/10/10 split, not comparable with published results."
+    "UIT-VSFC uses this project's own 80/10/10 split, not comparable with published results.",
+    "Forgetting: UIT-VSFC test Macro-F1 is 0.8295 after stage 1 and 0.7334 after the Shopee stage.",
+    "A product with no Neutral rows is scored on 2 classes; low_confidence is computed on pooled data only.",
+    "Latency is per review on this machine's GPU, batch 1 and 32; end_to_end = clean + segment + tokenize + forward."
   ]
 }

@@ -9,7 +9,7 @@ A fine-tuned 3-class (negative / neutral / positive) sentiment model whose targe
 PhoBERT-v2, XLM-R, FastText baseline, EDA augmentation, t-SNE, web demo UI, Gold Test Set and Fleiss' kappa, hyperparameter search, near-duplicate detection. No test files (assumed to carry over from the cleaning iteration; confirm).
 
 ## Inputs
-- `data/clean/dataset.csv` produced by `vi_clean.merge`, regenerated with `lowercase=False` (PhoBERT is case-sensitive). Current default-config run: 19,316 rows = UIT-VSFC 16,001 + Shopee 3,315; Neutral about 773 total, about 70 of them Shopee.
+- `data/clean/dataset.csv` produced by `vi_clean.merge`, regenerated with `lowercase=False` (PhoBERT is case-sensitive). Current default-config run: 19,316 rows = UIT-VSFC 16,001 + Shopee 3,315; Neutral about 773 total, 92 of them Shopee (measured after training; an earlier estimate of 70 was wrong).
 - Shopee raw reviews live outside this branch (main checkout `raw_reviews/`, 5 products). The training CLI takes `--shopee-dir`; raw data is not committed.
 
 ## Change to `vi_clean` (small)
@@ -50,7 +50,7 @@ Add `torch`, `transformers`, `underthesea` to `requirements.txt`. Downloading `v
 Dedup and cleaning precede splitting; Shopee splits are by whole product; class weights and checkpoint selection use training and validation parts only; the test part is read only by `evaluate.py`; the teencode dictionary is hand-authored.
 
 ## Known limits (reported, not hidden)
-- Shopee Neutral is about 70 rows, so its scores carry wide intervals even pooled.
+- Shopee Neutral is 92 rows, so its scores carry wide intervals even pooled.
 - Shopee labels are weak (stars); star-versus-text mismatches are not corrected.
 - 5 products from few categories; stars-only reviews (about 55% of crawled data) are unusable.
 - The held-out sets are not a human-labeled Gold Set.
