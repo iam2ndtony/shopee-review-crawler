@@ -12,3 +12,7 @@ env/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Claude worktrees
+.claude/worktrees/
+.superpowers/
