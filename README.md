@@ -47,3 +47,12 @@ uvicorn vi_clean.api:app        # POST /clean, /clean/batch, /jobs/merge-clean
 ```
 - Từ điển teencode: `vi_clean/data/teencode_v1.json` (sửa tay, có `version`).
 - Mọi tham số nằm trong `vi_clean/config.py`; `report.json` so sánh số mẫu cuối với 34,250 và ghi rõ chênh lệch.
+
+### 4. Fine-tune PhoBERT cho cảm xúc (`vi_train/`)
+Fine-tune 2 giai đoạn (UIT-VSFC, rồi Shopee), đánh giá leave-one-product-out trên các sản phẩm Shopee.
+```powershell
+python -m vi_train.train --shopee-dir raw_reviews   # tải vinai/phobert-base (~543 MB), lưu checkpoints/ và data/train/preds/
+python -m vi_train.evaluate                         # ghi reports/metrics.json (Macro-F1, recall từng lớp, độ trễ)
+uvicorn vi_clean.api:app                            # thêm POST /predict và /predict/batch (503 nếu chưa có checkpoints/final)
+```
+- Kết quả xem trong `reports/metrics.json`; tập giữ lại không phải Gold Set do người gán nhãn, và nhãn Shopee suy ra từ số sao.
