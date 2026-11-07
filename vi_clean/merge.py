@@ -15,7 +15,7 @@ from .config import CleanConfig
 from .stages import clean_texts, drop_low_ttr, drop_md5_duplicates
 from .teencode import load_teencode
 
-COLUMNS = ["text", "label", "source", "rating"]
+COLUMNS = ["text", "label", "source", "rating", "product_id"]
 
 
 def load_uit_vsfc(cfg: CleanConfig) -> pd.DataFrame:
@@ -30,7 +30,7 @@ def load_uit_vsfc(cfg: CleanConfig) -> pd.DataFrame:
             labels = [cfg.uit_label_map[int(x)] for x in f.read().split()]
         if len(texts) != len(labels):
             raise ValueError(f"{split}: {len(texts)} sentences but {len(labels)} sentiments")
-        frames.append(pd.DataFrame({"text": texts, "label": labels, "source": "uit_vsfc", "rating": np.nan}))
+        frames.append(pd.DataFrame({"text": texts, "label": labels, "source": "uit_vsfc", "rating": np.nan, "product_id": np.nan}))
     if not frames:
         raise FileNotFoundError(f"No <split>/sents.txt found under {cfg.uit_dir}")
     return pd.concat(frames, ignore_index=True)[COLUMNS]
@@ -47,7 +47,9 @@ def load_shopee(cfg: CleanConfig) -> pd.DataFrame:
             for item in json.load(f):
                 label = cfg.star_to_label.get(item.get("rating_star"))
                 if label is not None:  # missing / unmapped star = no label, skip
-                    rows.append((item.get("comment") or "", label, "shopee", float(item["rating_star"])))
+                    # "<shopid>.<itemid>" groups reviews by product (not personal data); file stem if ids missing
+                    pid = f"{item['shopid']}.{item['itemid']}" if item.get("shopid") and item.get("itemid") else path.stem
+                    rows.append((item.get("comment") or "", label, "shopee", float(item["rating_star"]), pid))
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
