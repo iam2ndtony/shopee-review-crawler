@@ -29,4 +29,22 @@ class TrainConfig:
     shopee_dir: Path = ROOT / "raw_reviews"
     work_dir: Path = ROOT / "data" / "train"
     ckpt_dir: Path = ROOT / "checkpoints"
-    report_path: Path = ROOT / "reports" / "metrics.json"
+    reports_dir: Path = ROOT / "reports"
+    # One run = one model + weight power; artifacts live under its name so runs can be compared.
+    run: str = "phobert-p1.0"
+    # Class weight = (N / (K * n_c)) ** weight_power. 1.0 is plain inverse frequency; lower is softer.
+    weight_power: float = 1.0
+    # PhoBERT needs word-segmented input; XLM-R (SentencePiece) does not.
+    segment: bool = True
+
+    @property
+    def run_ckpt(self) -> Path:
+        return self.ckpt_dir / self.run
+
+    @property
+    def run_preds(self) -> Path:
+        return self.work_dir / "preds" / self.run
+
+    @property
+    def run_report(self) -> Path:
+        return self.reports_dir / f"{self.run}.json"

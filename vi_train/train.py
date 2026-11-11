@@ -1,10 +1,11 @@
 """Two-stage PhoBERT fine-tuning with leave-one-product-out evaluation.
 
-Run: python -m vi_train.train --shopee-dir <folder with Shopee review JSON>
+Run: python -m vi_train.train --shopee-dir <folder with Shopee review JSON> [--run NAME
+--model HF_NAME --weight-power P --no-segment]
 Stage 1 trains on UIT-VSFC once; stage 2 starts from it, once per held-out Shopee product
 (for out-of-fold scores) and once on all Shopee rows (the shipped model). Held-out rows are
 only ever predicted, never trained on; class weights come from the stage's training rows.
-Predictions are written to <work_dir>/preds for evaluate.py.
+Checkpoints go to checkpoints/<run>/, predictions to data/train/preds/<run>/ for evaluate.py.
 """
 import argparse
 import dataclasses
@@ -29,7 +30,8 @@ def train_stage(model, tokenizer, train_df: pd.DataFrame, val_df: pd.DataFrame,
     """Fine-tune in place; keep the best epoch's weights by val Macro-F1 and return that score."""
     k = len(cfg.labels)
     torch.manual_seed(cfg.seed)
-    weights = torch.tensor(class_weights(train_df["y"].to_numpy(), k), dtype=torch.float32, device=device)
+    weights = torch.tensor(class_weights(train_df["y"].to_numpy(), k, cfg.weight_power),
+                           dtype=torch.float32, device=device)
     loss_fn = torch.nn.CrossEntropyLoss(weight=weights)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=cfg.weight_decay)
     steps = epochs * math.ceil(len(train_df) / cfg.batch_size)
@@ -65,16 +67,20 @@ def train_stage(model, tokenizer, train_df: pd.DataFrame, val_df: pd.DataFrame,
 
 
 def _model(cfg: TrainConfig, device: str, state: dict | None = None):
+    torch.manual_seed(cfg.seed)  # the new classifier head's random init must not differ between runs
     model = AutoModelForSequenceClassification.from_pretrained(cfg.model_name, num_labels=len(cfg.labels))
     if state is not None:
         model.load_state_dict(state)
     return model.to(device)
 
 
-def _save(model, tokenizer, path: Path) -> None:
+def _save(model, tokenizer, path: Path, cfg: TrainConfig) -> None:
     path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(path)
     tokenizer.save_pretrained(path)
+    # run.json tells inference how to feed this checkpoint (segment or not) and what it was trained with.
+    (path / "run.json").write_text(json.dumps(
+        {"model_name": cfg.model_name, "segment": cfg.segment, "weight_power": cfg.weight_power}), encoding="utf-8")
 
 
 def _preds(model, tokenizer, df: pd.DataFrame, cfg: TrainConfig, device: str, extra=()) -> pd.DataFrame:
@@ -95,13 +101,23 @@ def _disjoint(*frames: pd.DataFrame) -> None:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--shopee-dir", type=Path, default=None)
+    ap.add_argument("--run", default=None, help="run name; artifacts go under checkpoints/<run>, preds/<run>, reports/<run>.json")
+    ap.add_argument("--model", default=None, help="Hugging Face model name (default vinai/phobert-base)")
+    ap.add_argument("--weight-power", type=float, default=None, help="class weight = (N/(K*n_c))**power (default 1.0)")
+    ap.add_argument("--no-segment", action="store_true", help="skip word segmentation (for SentencePiece models like XLM-R)")
+    ap.add_argument("--overwrite", action="store_true", help="replace an existing run of the same name")
     args = ap.parse_args(argv)
     cfg = TrainConfig()
-    if args.shopee_dir:
-        cfg = dataclasses.replace(cfg, shopee_dir=args.shopee_dir)
+    overrides = {"shopee_dir": args.shopee_dir, "run": args.run, "model_name": args.model,
+                 "weight_power": args.weight_power, "segment": False if args.no_segment else None}
+    cfg = dataclasses.replace(cfg, **{k: v for k, v in overrides.items() if v is not None})
+    # Without --run the default name is the baseline, which cannot be regenerated exactly: never overwrite silently.
+    if cfg.run_ckpt.exists() and not args.overwrite:
+        ap.error(f"run '{cfg.run}' already exists at {cfg.run_ckpt}; pass --run NEW_NAME, or --overwrite to replace it")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    preds_dir = cfg.work_dir / "preds"
+    preds_dir = cfg.run_preds
     preds_dir.mkdir(parents=True, exist_ok=True)
+    print(f"run {cfg.run}: model {cfg.model_name}, segment {cfg.segment}, weight power {cfg.weight_power}", flush=True)
 
     df = prepare(cfg)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
@@ -113,8 +129,8 @@ def main(argv: list[str] | None = None) -> None:
     model = _model(cfg, device)
     log["stage1"] = train_stage(model, tokenizer, uit_tr, uit_va, cfg.stage1_lr, cfg.stage1_epochs, cfg, device)
     stage1_state = {n: v.detach().cpu().clone() for n, v in model.state_dict().items()}
-    _save(model, tokenizer, cfg.ckpt_dir / "stage1")
-    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_stage1.csv", index=False, encoding="utf-8")
+    _save(model, tokenizer, cfg.run_ckpt / "stage1", cfg)
+    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_stage1.csv", index=False, encoding="utf-8-sig")
 
     oof = []
     for pid, tr, va, te in shopee_folds(df, cfg):
@@ -126,15 +142,15 @@ def main(argv: list[str] | None = None) -> None:
         del model
         if device == "cuda":
             torch.cuda.empty_cache()
-    pd.concat(oof).to_csv(preds_dir / "shopee_oof.csv", index=False, encoding="utf-8")
+    pd.concat(oof).to_csv(preds_dir / "shopee_oof.csv", index=False, encoding="utf-8-sig")
 
     print("stage 2 final: all Shopee products", flush=True)
     tr, va = shopee_final(df, cfg)
     _disjoint(tr, va)
     model = _model(cfg, device, stage1_state)
     log["final"] = train_stage(model, tokenizer, tr, va, cfg.stage2_lr, cfg.stage2_epochs, cfg, device)
-    _save(model, tokenizer, cfg.ckpt_dir / "final")
-    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_final.csv", index=False, encoding="utf-8")
+    _save(model, tokenizer, cfg.run_ckpt / "final", cfg)
+    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_final.csv", index=False, encoding="utf-8-sig")
 
     with open(preds_dir / "train_log.json", "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
