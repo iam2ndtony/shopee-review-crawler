@@ -128,7 +128,7 @@ def main() -> None:
     preds = cfg.work_dir / "preds"
 
     def load(name: str) -> pd.DataFrame:
-        return pd.read_csv(preds / name, encoding="utf-8", keep_default_na=False,
+        return pd.read_csv(preds / name, encoding="utf-8-sig", keep_default_na=False,
                            dtype={"text": str, "seg": str, "product_id": str})
 
     out: dict = {}

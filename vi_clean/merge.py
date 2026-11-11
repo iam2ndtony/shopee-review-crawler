@@ -47,8 +47,9 @@ def load_shopee(cfg: CleanConfig) -> pd.DataFrame:
             for item in json.load(f):
                 label = cfg.star_to_label.get(item.get("rating_star"))
                 if label is not None:  # missing / unmapped star = no label, skip
-                    # "<shopid>.<itemid>" groups reviews by product (not personal data); file stem if ids missing
-                    pid = f"{item['shopid']}.{item['itemid']}" if item.get("shopid") and item.get("itemid") else path.stem
+                    # "s<shopid>_i<itemid>" groups reviews by product (not personal data); file stem if ids missing.
+                    # Letters keep Excel from reading it as a number (1.58E+).
+                    pid = f"s{item['shopid']}_i{item['itemid']}" if item.get("shopid") and item.get("itemid") else path.stem
                     rows.append((item.get("comment") or "", label, "shopee", float(item["rating_star"]), pid))
     return pd.DataFrame(rows, columns=COLUMNS)
 
@@ -71,7 +72,7 @@ def run_job(cfg: CleanConfig = CleanConfig()) -> dict:
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     tmp = cfg.out_dir / "dataset.csv.tmp"  # write then replace: readers never see a partial file
-    df.to_csv(tmp, index=False, encoding="utf-8")
+    df.to_csv(tmp, index=False, encoding="utf-8-sig")  # BOM so Excel shows Vietnamese correctly
     os.replace(tmp, cfg.out_dir / "dataset.csv")
 
     total = len(df)

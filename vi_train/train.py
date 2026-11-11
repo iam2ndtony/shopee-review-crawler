@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> None:
     log["stage1"] = train_stage(model, tokenizer, uit_tr, uit_va, cfg.stage1_lr, cfg.stage1_epochs, cfg, device)
     stage1_state = {n: v.detach().cpu().clone() for n, v in model.state_dict().items()}
     _save(model, tokenizer, cfg.ckpt_dir / "stage1")
-    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_stage1.csv", index=False, encoding="utf-8")
+    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_stage1.csv", index=False, encoding="utf-8-sig")
 
     oof = []
     for pid, tr, va, te in shopee_folds(df, cfg):
@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> None:
         del model
         if device == "cuda":
             torch.cuda.empty_cache()
-    pd.concat(oof).to_csv(preds_dir / "shopee_oof.csv", index=False, encoding="utf-8")
+    pd.concat(oof).to_csv(preds_dir / "shopee_oof.csv", index=False, encoding="utf-8-sig")
 
     print("stage 2 final: all Shopee products", flush=True)
     tr, va = shopee_final(df, cfg)
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     model = _model(cfg, device, stage1_state)
     log["final"] = train_stage(model, tokenizer, tr, va, cfg.stage2_lr, cfg.stage2_epochs, cfg, device)
     _save(model, tokenizer, cfg.ckpt_dir / "final")
-    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_final.csv", index=False, encoding="utf-8")
+    _preds(model, tokenizer, uit_te, cfg, device).to_csv(preds_dir / "uit_test_final.csv", index=False, encoding="utf-8-sig")
 
     with open(preds_dir / "train_log.json", "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
