@@ -75,6 +75,9 @@ def _md5_key(text: str) -> str:
     return hashlib.md5(norm.encode("utf-8")).hexdigest() if norm else ""
 
 
+md5_key = _md5_key  # public name: the web demo matches reviews to dataset rows with the same key
+
+
 def drop_md5_duplicates(df: pd.DataFrame, cfg: CleanConfig) -> tuple[pd.DataFrame, int]:
     """Keep the first row per MD5 key; also return how many dropped rows had a different label."""
     key = df["text"].map(_md5_key)
