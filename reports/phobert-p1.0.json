@@ -1,4 +1,10 @@
 {
+  "run": {
+    "name": "phobert-p1.0",
+    "model_name": "vinai/phobert-base",
+    "segment": true,
+    "weight_power": 1.0
+  },
   "uit_vsfc_test_stage1": {
     "n": 1600,
     "macro_f1": 0.8295,
@@ -185,35 +191,35 @@
     "batch1": {
       "n_batches": 320,
       "clean": {
-        "median_ms": 1.38,
-        "p95_ms": 1.83
+        "median_ms": 1.35,
+        "p95_ms": 1.71
       },
       "segment": {
-        "median_ms": 1.05,
-        "p95_ms": 2.38
+        "median_ms": 0.96,
+        "p95_ms": 2.53
       },
       "tokenize_forward": {
-        "median_ms": 23.29,
-        "p95_ms": 29.51
+        "median_ms": 22.67,
+        "p95_ms": 28.44
       },
       "end_to_end": {
-        "median_ms": 25.41,
-        "p95_ms": 32.35
+        "median_ms": 24.98,
+        "p95_ms": 31.7
       }
     },
     "batch32": {
       "n_batches": 10,
       "clean": {
-        "median_ms": 0.1
+        "median_ms": 0.11
       },
       "segment": {
-        "median_ms": 1.01
+        "median_ms": 1.02
       },
       "tokenize_forward": {
-        "median_ms": 1.2
+        "median_ms": 1.27
       },
       "end_to_end": {
-        "median_ms": 2.32
+        "median_ms": 2.4
       }
     }
   },

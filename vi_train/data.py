@@ -33,18 +33,22 @@ def prepare(cfg: TrainConfig) -> pd.DataFrame:
     df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
     df["product_id"] = df["product_id"].replace("", np.nan)
 
-    cache_path = cfg.work_dir / "segmented.csv"
-    cache = {}
-    if cache_path.is_file():
-        old = pd.read_csv(cache_path, encoding="utf-8-sig", keep_default_na=False, dtype=str)
-        cache = dict(zip(old["text"], old["seg"]))
-    missing = [t for t in df["text"].unique() if t not in cache]
-    for t in missing:
-        cache[t] = segment(t)
-    if missing:
-        pd.DataFrame({"text": list(cache), "seg": list(cache.values())}).to_csv(
-            cache_path, index=False, encoding="utf-8-sig")
-    df["seg"] = df["text"].map(cache)
+    # `seg` is the model input: word-segmented text for PhoBERT, plain cleaned text otherwise.
+    if cfg.segment:
+        cache_path = cfg.work_dir / "segmented.csv"
+        cache = {}
+        if cache_path.is_file():
+            old = pd.read_csv(cache_path, encoding="utf-8-sig", keep_default_na=False, dtype=str)
+            cache = dict(zip(old["text"], old["seg"]))
+        missing = [t for t in df["text"].unique() if t not in cache]
+        for t in missing:
+            cache[t] = segment(t)
+        if missing:
+            pd.DataFrame({"text": list(cache), "seg": list(cache.values())}).to_csv(
+                cache_path, index=False, encoding="utf-8-sig")
+        df["seg"] = df["text"].map(cache)
+    else:
+        df["seg"] = df["text"]
     df["y"] = df["label"].map({lab: i for i, lab in enumerate(cfg.labels)})
     return df
 
@@ -87,9 +91,9 @@ def shopee_final(df: pd.DataFrame, cfg: TrainConfig) -> tuple[pd.DataFrame, pd.D
     return stratified_split(df[df["source"] == "shopee"], cfg.val_frac, cfg.seed)
 
 
-def class_weights(y: np.ndarray, k: int) -> np.ndarray:
-    """w_c = N / (k * n_c); a class with no rows is an error, not a silent infinity."""
+def class_weights(y: np.ndarray, k: int, power: float = 1.0) -> np.ndarray:
+    """w_c = (N / (k * n_c)) ** power; a class with no rows is an error, not a silent infinity."""
     counts = np.bincount(y, minlength=k)
     if (counts == 0).any():
         raise ValueError(f"class index {int(np.argmin(counts))} has no training rows")
-    return len(y) / (k * counts)
+    return (len(y) / (k * counts)) ** power

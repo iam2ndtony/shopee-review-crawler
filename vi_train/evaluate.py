@@ -5,6 +5,8 @@ score a zero for a class it never had. Accuracy is reported last on purpose (it 
 under class imbalance). Shopee intervals resample whole products, because reviews of one
 product are correlated; row-level resampling would give a misleadingly narrow interval.
 """
+import argparse
+import dataclasses
 import json
 import time
 
@@ -79,7 +81,6 @@ def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
     """Per-review latency of the shipped model on 320 Shopee reviews. Each batch is timed
     stage by stage in one loop (clean, word segmentation, tokenize+forward), so end_to_end is
     their sum on the same items; clean/segment and the model are warmed up first."""
-    import dataclasses
     import torch
     from vi_clean.config import CleanConfig
     from vi_clean.stages import clean_texts
@@ -89,7 +90,8 @@ def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
 
     ccfg = dataclasses.replace(CleanConfig(), lowercase=False)
     table = load_teencode(ccfg.teencode_path)
-    clf = Classifier.from_dir(cfg.ckpt_dir / "final", cfg)
+    clf = Classifier.from_dir(cfg.run_ckpt / "final", cfg)
+    seg_fn = segment if clf.segment else (lambda x: x)  # XLM-R runs take cleaned text as is
     raws = oof.sample(n=min(320, len(oof)), random_state=cfg.seed)["text"].tolist()
     sync = torch.cuda.synchronize if torch.cuda.is_available() else (lambda: None)
 
@@ -103,7 +105,7 @@ def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
     for _ in range(10):  # warm-up: CUDA kernels, allocator, underthesea model, pandas
         clf.probs(["sản_phẩm tốt"] * 32)
         clf.probs(["sản_phẩm tốt"])
-    segment("sản phẩm tốt")
+    seg_fn("sản phẩm tốt")
     clean_texts(pd.Series(["sản phẩm tốt"], dtype=object), ccfg, table)
 
     def run(batch: int) -> dict:
@@ -111,7 +113,7 @@ def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
         for i in range(0, len(raws), batch):
             xs = raws[i:i + batch]
             cl, t1 = timed(lambda: clean_texts(pd.Series(xs, dtype=object), ccfg, table).tolist())
-            sg, t2 = timed(lambda: [segment(x) for x in cl])
+            sg, t2 = timed(lambda: [seg_fn(x) for x in cl])
             _, t3 = timed(lambda: clf.probs(sg))
             for key, t in zip(rows, (t1, t2, t3, t1 + t2 + t3)):
                 rows[key].append(t / len(xs))  # ms per review
@@ -121,17 +123,23 @@ def _latency(oof: pd.DataFrame, cfg: TrainConfig) -> dict:
     return {"batch1": run(1), "batch32": run(32)}
 
 
-def main() -> None:
-    """Build reports/metrics.json from the prediction files written by train.py."""
+def main(argv: list[str] | None = None) -> None:
+    """Build reports/<run>.json from the prediction files written by train.py for that run."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run", default=None, help="run name (default: TrainConfig.run)")
+    args = ap.parse_args(argv)
     cfg = TrainConfig()
+    if args.run:
+        cfg = dataclasses.replace(cfg, run=args.run)
     k = len(cfg.labels)
-    preds = cfg.work_dir / "preds"
+    preds = cfg.run_preds
 
     def load(name: str) -> pd.DataFrame:
         return pd.read_csv(preds / name, encoding="utf-8-sig", keep_default_na=False,
                            dtype={"text": str, "seg": str, "product_id": str})
 
-    out: dict = {}
+    meta = cfg.run_ckpt / "final" / "run.json"
+    out: dict = {"run": {"name": cfg.run, **json.loads(meta.read_text(encoding="utf-8"))}}
     for key, fname in (("uit_vsfc_test_stage1", "uit_test_stage1.csv"), ("uit_vsfc_test_final", "uit_test_final.csv")):
         d = load(fname)
         out[key] = {"n": len(d), **report(d["y"].to_numpy(), d["pred"].to_numpy(), cfg)}
@@ -156,8 +164,8 @@ def main() -> None:
         "A product with no Neutral rows is scored on 2 classes; low_confidence is computed on pooled data only.",
         "Latency is per review on this machine's GPU, batch 1 and 32; end_to_end = clean + segment + tokenize + forward.",
     ]
-    cfg.report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cfg.report_path, "w", encoding="utf-8") as f:
+    cfg.run_report.parent.mkdir(parents=True, exist_ok=True)
+    with open(cfg.run_report, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, ensure_ascii=False)
     print(json.dumps({key: out[key] for key in ("uit_vsfc_test_final", "shopee_oof", "latency")}, indent=2))
 

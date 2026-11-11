@@ -1,4 +1,5 @@
 """Inference helpers shared by training, evaluation and the API."""
+import json
 from pathlib import Path
 
 import numpy as np
@@ -25,16 +26,19 @@ def predict_probs(model, tokenizer, texts: list[str], max_len: int, batch_size: 
 class Classifier:
     """A saved fine-tuned checkpoint ready for inference on word-segmented text."""
 
-    def __init__(self, model, tokenizer, cfg: TrainConfig, device: str):
-        self.model, self.tokenizer, self.cfg, self.device = model, tokenizer, cfg, device
+    def __init__(self, model, tokenizer, cfg: TrainConfig, device: str, segment: bool = True):
+        self.model, self.tokenizer, self.cfg, self.device, self.segment = model, tokenizer, cfg, device, segment
 
     @classmethod
     def from_dir(cls, path: Path, cfg: TrainConfig) -> "Classifier":
         device = "cuda" if torch.cuda.is_available() else "cpu"
         tokenizer = AutoTokenizer.from_pretrained(path)
         model = AutoModelForSequenceClassification.from_pretrained(path).to(device).eval()
-        return cls(model, tokenizer, cfg, device)
+        meta = path / "run.json"  # absent in checkpoints made before runs existed: those are PhoBERT, segmented
+        segment = json.loads(meta.read_text(encoding="utf-8"))["segment"] if meta.is_file() else True
+        return cls(model, tokenizer, cfg, device, segment)
 
     def probs(self, seg_texts: list[str]) -> np.ndarray:
+        """Probabilities for model-input texts (word-segmented when `self.segment`)."""
         return predict_probs(self.model, self.tokenizer, seg_texts, self.cfg.max_len,
                              self.cfg.batch_size, self.device)

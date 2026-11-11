@@ -5,6 +5,7 @@ The per-text stages run per request; MD5 duplicate detection is dataset-level an
 happens inside /jobs/merge-clean (it needs the whole dataset).
 """
 import dataclasses
+import os
 import threading
 from typing import Annotated
 
@@ -63,15 +64,16 @@ _clf_lock = threading.Lock()
 
 
 def _classifier():
-    """Load the final checkpoint once, on first use (keeps torch out of /clean's startup)."""
+    """Load the final checkpoint of run $VI_RUN once, on first use (keeps torch out of /clean's startup)."""
     global _clf
     with _clf_lock:
         if _clf is None:
             from vi_train.config import TrainConfig
             tcfg = TrainConfig()
-            path = tcfg.ckpt_dir / "final"
+            tcfg = dataclasses.replace(tcfg, run=os.environ.get("VI_RUN", tcfg.run))
+            path = tcfg.run_ckpt / "final"
             if not path.is_dir():
-                raise HTTPException(status_code=503, detail="Model not trained yet: checkpoints/final is missing")
+                raise HTTPException(status_code=503, detail=f"Model not trained yet: checkpoints/{tcfg.run}/final is missing")
             from vi_train.predict import Classifier
             _clf = Classifier.from_dir(path, tcfg)
         return _clf
@@ -85,7 +87,8 @@ def _predict(texts: list[str]) -> list[dict]:
     if idx:  # all-blank requests never load the model
         clf = _classifier()
         from vi_train.data import segment
-        probs = clf.probs([segment(cleaned[i]) for i in idx])
+        inputs = [segment(cleaned[i]) if clf.segment else cleaned[i] for i in idx]  # XLM-R takes plain text
+        probs = clf.probs(inputs)
         labels = clf.cfg.labels
         for i, p in zip(idx, probs):
             out[i].update(label=labels[int(p.argmax())],
