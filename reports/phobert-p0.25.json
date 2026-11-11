@@ -1,0 +1,236 @@
+{
+  "run": {
+    "name": "phobert-p0.25",
+    "model_name": "vinai/phobert-base",
+    "segment": true,
+    "weight_power": 0.25
+  },
+  "uit_vsfc_test_stage1": {
+    "n": 1600,
+    "macro_f1": 0.8301,
+    "macro_f1_ci": [
+      0.7889,
+      0.8656
+    ],
+    "macro_f1_ci_method": "rows",
+    "per_class": {
+      "negative": {
+        "precision": 0.9413,
+        "recall": 0.9717,
+        "f1": 0.9563,
+        "n": 743
+      },
+      "neutral": {
+        "precision": 0.6667,
+        "recall": 0.5,
+        "f1": 0.5714,
+        "n": 68
+      },
+      "positive": {
+        "precision": 0.9668,
+        "recall": 0.9582,
+        "f1": 0.9624,
+        "n": 789
+      }
+    },
+    "confusion": [
+      [
+        722,
+        10,
+        11
+      ],
+      [
+        19,
+        34,
+        15
+      ],
+      [
+        26,
+        7,
+        756
+      ]
+    ],
+    "low_confidence": [],
+    "accuracy": 0.945
+  },
+  "uit_vsfc_test_final": {
+    "n": 1600,
+    "macro_f1": 0.7221,
+    "macro_f1_ci": [
+      0.6721,
+      0.7638
+    ],
+    "macro_f1_ci_method": "rows",
+    "per_class": {
+      "negative": {
+        "precision": 0.9708,
+        "recall": 0.8048,
+        "f1": 0.8801,
+        "n": 743
+      },
+      "neutral": {
+        "precision": 1.0,
+        "recall": 0.25,
+        "f1": 0.4,
+        "n": 68
+      },
+      "positive": {
+        "precision": 0.8046,
+        "recall": 0.9861,
+        "f1": 0.8861,
+        "n": 789
+      }
+    },
+    "confusion": [
+      [
+        598,
+        0,
+        145
+      ],
+      [
+        7,
+        17,
+        44
+      ],
+      [
+        11,
+        0,
+        778
+      ]
+    ],
+    "low_confidence": [],
+    "accuracy": 0.8706
+  },
+  "shopee_oof": {
+    "n": 3315,
+    "macro_f1": 0.5525,
+    "macro_f1_ci": [
+      0.4828,
+      0.5868
+    ],
+    "macro_f1_ci_method": "whole groups (5 products); rough with so few",
+    "per_class": {
+      "negative": {
+        "precision": 0.6091,
+        "recall": 0.6655,
+        "f1": 0.6361,
+        "n": 281
+      },
+      "neutral": {
+        "precision": 0.0976,
+        "recall": 0.0435,
+        "f1": 0.0602,
+        "n": 92
+      },
+      "positive": {
+        "precision": 0.9572,
+        "recall": 0.9653,
+        "f1": 0.9612,
+        "n": 2942
+      }
+    },
+    "confusion": [
+      [
+        187,
+        10,
+        84
+      ],
+      [
+        45,
+        4,
+        43
+      ],
+      [
+        75,
+        27,
+        2840
+      ]
+    ],
+    "low_confidence": [],
+    "accuracy": 0.9143
+  },
+  "shopee_per_product": {
+    "s1103428920_i46913118781": {
+      "n": 100,
+      "macro_f1": 0.8222,
+      "neutral_rows": 0
+    },
+    "s1221416449_i26303882957": {
+      "n": 834,
+      "macro_f1": 0.5768,
+      "neutral_rows": 18
+    },
+    "s133655613_i18749577523": {
+      "n": 850,
+      "macro_f1": 0.5275,
+      "neutral_rows": 21
+    },
+    "s1584737468_i41509254141": {
+      "n": 471,
+      "macro_f1": 0.5652,
+      "neutral_rows": 39
+    },
+    "s951911669_i25654134916": {
+      "n": 1060,
+      "macro_f1": 0.4355,
+      "neutral_rows": 14
+    }
+  },
+  "training": {
+    "folds": {
+      "s1103428920_i46913118781": 0.5913243378310845,
+      "s1221416449_i26303882957": 0.6171553118188848,
+      "s133655613_i18749577523": 0.6307790549169859,
+      "s1584737468_i41509254141": 0.6485971446306642,
+      "s951911669_i25654134916": 0.5668575584037815
+    },
+    "stage1": 0.8622157127397605,
+    "final": 0.589135158626684
+  },
+  "latency": {
+    "batch1": {
+      "n_batches": 320,
+      "clean": {
+        "median_ms": 1.39,
+        "p95_ms": 1.8
+      },
+      "segment": {
+        "median_ms": 0.96,
+        "p95_ms": 2.56
+      },
+      "tokenize_forward": {
+        "median_ms": 23.48,
+        "p95_ms": 29.83
+      },
+      "end_to_end": {
+        "median_ms": 25.96,
+        "p95_ms": 32.5
+      }
+    },
+    "batch32": {
+      "n_batches": 10,
+      "clean": {
+        "median_ms": 0.1
+      },
+      "segment": {
+        "median_ms": 0.99
+      },
+      "tokenize_forward": {
+        "median_ms": 1.12
+      },
+      "end_to_end": {
+        "median_ms": 2.28
+      }
+    }
+  },
+  "notes": [
+    "Held-out sets are not a human-labeled Gold Set; no kappa exists.",
+    "Shopee Neutral evaluation rows: 92; scores are rough.",
+    "Shopee interval resamples whole products (5), so it is wide and itself rough; UIT-VSFC intervals resample rows.",
+    "Shopee labels are weak (star ratings); star-versus-text mismatches are not corrected.",
+    "UIT-VSFC uses this project's own 80/10/10 split, not comparable with published results.",
+    "Forgetting: UIT-VSFC test Macro-F1 is 0.8301 after stage 1 and 0.7221 after the Shopee stage.",
+    "A product with no Neutral rows is scored on 2 classes; low_confidence is computed on pooled data only.",
+    "Latency is per review on this machine's GPU, batch 1 and 32; end_to_end = clean + segment + tokenize + forward."
+  ]
+}
