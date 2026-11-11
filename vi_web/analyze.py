@@ -5,14 +5,18 @@ username, user id and avatar are never touched. Stars-only reviews (no text) are
 not listed or predicted. A review is "not predicted" when it has text but no label.
 """
 import dataclasses
+import json
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from vi_clean.config import CleanConfig
+from vi_clean.predictor import predict_texts, serve_run
 from vi_clean.stages import clean_texts, low_ttr_mask, md5_key
 from vi_clean.teencode import load_teencode
 from vi_train.config import TrainConfig
+
+from .config import WebConfig
 
 LABELS = TrainConfig().labels  # ("negative", "neutral", "positive")
 # Training data was cleaned with lowercase off; the analysis cleans the same way.
@@ -58,6 +62,66 @@ def flag_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["duplicate"] = (keys.duplicated(keep="first") & (keys != "")).astype(bool)
     out["repetitive"] = low_ttr_mask(out["cleaned"], _CFG).astype(bool)
     return out
+
+
+def list_saved(cfg: WebConfig) -> list[dict]:
+    """Saved review files (JSON lists) in cfg.saved_dir, sorted by name."""
+    out = []
+    for p in sorted(cfg.saved_dir.glob("*.json")) if cfg.saved_dir.is_dir() else []:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, list):
+            out.append({"file": p.name, "name": p.stem, "reviews": len(data)})
+    return out
+
+
+def _load_saved(file: str, cfg: WebConfig) -> list[dict]:
+    if file not in {p["file"] for p in list_saved(cfg)}:  # only names from the listing, never a path
+        raise KeyError(file)
+    return json.loads((cfg.saved_dir / file).read_text(encoding="utf-8"))
+
+
+def saved_product_ids(cfg: WebConfig) -> set[str]:
+    """Product ids of the saved files: the products the final model was trained on."""
+    return {product_id_of(_load_saved(p["file"], cfg)) for p in list_saved(cfg)} - {""}
+
+
+def analyze_saved(file: str, cfg: WebConfig) -> dict:
+    """Analysis of a saved product with the held-out predictions of leave-one-product-out.
+
+    A review is matched to a prediction of the same product by the MD5 key of its cleaned text.
+    The dataset was deduplicated across all products, so a review repeated in another product
+    has no held-out prediction here; borrowing the other product's label would leak (that
+    product's fold model trained on this one), so it stays "not predicted".
+    """
+    items = _load_saved(file, cfg)
+    df = flag_frame(reviews_frame(items))
+    tcfg = TrainConfig()
+    oof = pd.read_csv(tcfg.work_dir / "preds" / serve_run() / "shopee_oof.csv", encoding="utf-8-sig",
+                      keep_default_na=False, dtype=str)
+    oof = oof[oof["product_id"] == product_id_of(items)]
+    by_key = {md5_key(t): tcfg.labels[int(y)] for t, y in zip(oof["text"], oof["y"])}
+    df["label"] = [by_key.get(md5_key(c)) if c else None for c in df["cleaned"]]
+    df["probs"] = None  # the saved predictions store labels only
+    return build_analysis(df, "saved", False)
+
+
+def analyze_live(items: list[dict], cfg: WebConfig | None = None) -> dict:
+    """Analysis of freshly crawled reviews with the final model; probabilities are included."""
+    cfg = cfg or WebConfig()
+    df = flag_frame(reviews_frame(items))
+    df["label"], df["probs"] = None, None
+    idx = df.index[df["text"] != ""].tolist()
+    if idx:
+        preds = predict_texts(df.loc[idx, "text"].tolist())
+        df["label"] = df["label"].astype(object)
+        df["probs"] = df["probs"].astype(object)
+        for i, p in zip(idx, preds):
+            df.at[i, "label"], df.at[i, "probs"] = p["label"], p["probs"]
+    warn = product_id_of(items) in saved_product_ids(cfg)
+    return build_analysis(df, "live", warn)
 
 
 def _disagrees(stars: int, label) -> bool:
