@@ -102,7 +102,8 @@ def analyze_saved(file: str, cfg: WebConfig) -> dict:
     oof = pd.read_csv(tcfg.work_dir / "preds" / serve_run() / "shopee_oof.csv", encoding="utf-8-sig",
                       keep_default_na=False, dtype=str)
     oof = oof[oof["product_id"] == product_id_of(items)]
-    by_key = {md5_key(t): tcfg.labels[int(y)] for t, y in zip(oof["text"], oof["y"])}
+    # `pred` is the model's held-out prediction; `y` is the true star-derived label and must not be shown as one.
+    by_key = {md5_key(t): tcfg.labels[int(p)] for t, p in zip(oof["text"], oof["pred"])}
     df["label"] = [by_key.get(md5_key(c)) if c else None for c in df["cleaned"]]
     df["probs"] = None  # the saved predictions store labels only
     return build_analysis(df, "saved", False)
