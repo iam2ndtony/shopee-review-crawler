@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 from .config import CleanConfig
 from .merge import run_job
+from vi_web.routes import mount
+
 from .predictor import ModelMissing, predict_texts
 from .stages import clean_texts, low_ttr_mask
 from .teencode import load_teencode
@@ -21,6 +23,7 @@ cfg = CleanConfig()
 table = load_teencode(cfg.teencode_path)
 app = FastAPI(title="Vietnamese review cleaning")
 _job_lock = threading.Lock()
+mount(app)  # the review-analysis page at / and its /analyze routes
 
 
 class CleanIn(BaseModel):
