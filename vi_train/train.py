@@ -105,11 +105,15 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--model", default=None, help="Hugging Face model name (default vinai/phobert-base)")
     ap.add_argument("--weight-power", type=float, default=None, help="class weight = (N/(K*n_c))**power (default 1.0)")
     ap.add_argument("--no-segment", action="store_true", help="skip word segmentation (for SentencePiece models like XLM-R)")
+    ap.add_argument("--overwrite", action="store_true", help="replace an existing run of the same name")
     args = ap.parse_args(argv)
     cfg = TrainConfig()
     overrides = {"shopee_dir": args.shopee_dir, "run": args.run, "model_name": args.model,
                  "weight_power": args.weight_power, "segment": False if args.no_segment else None}
     cfg = dataclasses.replace(cfg, **{k: v for k, v in overrides.items() if v is not None})
+    # Without --run the default name is the baseline, which cannot be regenerated exactly: never overwrite silently.
+    if cfg.run_ckpt.exists() and not args.overwrite:
+        ap.error(f"run '{cfg.run}' already exists at {cfg.run_ckpt}; pass --run NEW_NAME, or --overwrite to replace it")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     preds_dir = cfg.run_preds
     preds_dir.mkdir(parents=True, exist_ok=True)

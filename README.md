@@ -55,6 +55,6 @@ python -m vi_train.train --shopee-dir raw_reviews   # tải vinai/phobert-base (
 python -m vi_train.evaluate --run phobert-p1.0      # ghi reports/<run>.json (Macro-F1, recall từng lớp, độ trễ)
 uvicorn vi_clean.api:app                            # thêm POST /predict và /predict/batch (503 nếu chưa có checkpoints/<run>/final)
 ```
-- Mỗi lần chạy là một "run": `--run NAME` đặt tên, `--model` đổi mô hình (vd. `FacebookAI/xlm-roberta-base`), `--weight-power P` làm mềm trọng số lớp (`(N/(K*n_c))**P`, mặc định 1.0), `--no-segment` bỏ tách từ (dùng cho XLM-R).
+- Mỗi lần chạy là một "run": `--run NAME` đặt tên, `--model` đổi mô hình (vd. `FacebookAI/xlm-roberta-base`), `--weight-power P` làm mềm trọng số lớp (`(N/(K*n_c))**P`, mặc định 1.0), `--no-segment` bỏ tách từ (dùng cho XLM-R). Huấn luyện từ chối ghi đè một run đã có; dùng `--overwrite` nếu thật sự muốn.
 - API phục vụ run trong biến môi trường `VI_RUN` (mặc định `phobert-p1.0`); `/predict` trả `label: null` cho văn bản trống.
 - Kết quả xem trong `reports/<run>.json`; tập giữ lại không phải Gold Set do người gán nhãn, và nhãn Shopee suy ra từ số sao.

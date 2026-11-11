@@ -191,35 +191,35 @@
     "batch1": {
       "n_batches": 320,
       "clean": {
-        "median_ms": 1.39,
-        "p95_ms": 1.8
+        "median_ms": 1.42,
+        "p95_ms": 1.79
       },
       "segment": {
-        "median_ms": 0.96,
-        "p95_ms": 2.56
+        "median_ms": 1.07,
+        "p95_ms": 2.67
       },
       "tokenize_forward": {
-        "median_ms": 23.48,
-        "p95_ms": 29.83
+        "median_ms": 25.04,
+        "p95_ms": 29.61
       },
       "end_to_end": {
-        "median_ms": 25.96,
-        "p95_ms": 32.5
+        "median_ms": 27.5,
+        "p95_ms": 32.83
       }
     },
     "batch32": {
       "n_batches": 10,
       "clean": {
-        "median_ms": 0.1
+        "median_ms": 0.09
       },
       "segment": {
-        "median_ms": 0.99
+        "median_ms": 0.83
       },
       "tokenize_forward": {
-        "median_ms": 1.12
+        "median_ms": 0.88
       },
       "end_to_end": {
-        "median_ms": 2.28
+        "median_ms": 1.95
       }
     }
   },
