@@ -1,3 +1,111 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Review analysis</title></head>
-<body><p>Review analysis page (placeholder, replaced in Task 6).</p></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopee review analysis</title>
+<meta name="description" content="Paste a Shopee product link and see how a sentiment model reads its reviews.">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to results</a>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Shopee review analysis</h1>
+    <p class="lede">Paste a product link to see how its reviews read as positive, negative or neutral, and open any review.</p>
+
+    <form id="link-form" class="bar" novalidate>
+      <label for="url">Shopee product link</label>
+      <div class="row">
+        <input id="url" name="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Paste a Shopee product link">
+        <button type="submit" id="go" class="primary">Analyze reviews</button>
+      </div>
+    </form>
+
+    <div class="bar">
+      <label for="saved">Or open a saved product</label>
+      <select id="saved"><option value="">Choose a product</option></select>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <button id="ready" type="button" class="primary" hidden>I'm ready</button>
+    <div id="error" class="error" role="alert" hidden></div>
+  </div>
+</header>
+
+<main id="main" class="wrap" hidden>
+  <h2 id="results-title" tabindex="-1">Results</h2>
+  <div id="notice" class="notice" hidden></div>
+
+  <section aria-labelledby="h-summary">
+    <h3 id="h-summary" class="sr">Summary</h3>
+    <div id="summary" class="tiles"></div>
+  </section>
+
+  <p class="caution">Predictions come from a model that is weakest on Neutral, and labels are not human-verified.</p>
+
+  <section class="card" aria-labelledby="h-share">
+    <h3 id="h-share">Predicted sentiment</h3>
+    <div id="share-chart"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-stars">
+    <h3 id="h-stars">Star rating by predicted sentiment</h3>
+    <p class="sub">Reviews with a 4 or 5 star rating predicted Negative, or a 1 or 2 star rating predicted Positive, count as disagreements.</p>
+    <div id="stars-chart"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-months">
+    <h3 id="h-months">Reviews per month by predicted sentiment</h3>
+    <div id="months-chart"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-browse">
+    <h3 id="h-browse">Browse reviews</h3>
+    <div class="filters">
+      <div class="field"><label for="f-label">Predicted</label>
+        <select id="f-label">
+          <option value="">All</option>
+          <option value="negative">Negative</option>
+          <option value="neutral">Neutral</option>
+          <option value="positive">Positive</option>
+          <option value="none">Not predicted</option>
+        </select></div>
+      <div class="field"><label for="f-stars">Stars</label>
+        <select id="f-stars">
+          <option value="">All</option>
+          <option value="5">5</option><option value="4">4</option><option value="3">3</option>
+          <option value="2">2</option><option value="1">1</option>
+        </select></div>
+      <div class="field grow"><label for="f-q">Search the text</label>
+        <input id="f-q" type="search" autocomplete="off" spellcheck="false"></div>
+      <label class="check"><input id="f-disagree" type="checkbox"> Disagrees with stars</label>
+      <label class="check"><input id="f-flagged" type="checkbox"> Repeated or duplicate</label>
+    </div>
+
+    <p id="count" class="count" aria-live="polite"></p>
+    <table class="reviews">
+      <thead><tr><th scope="col">Stars</th><th scope="col">Predicted</th><th scope="col">Review</th><th scope="col">Flags</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="pager">
+      <button id="prev" type="button">Previous</button>
+      <span id="pageinfo"></span>
+      <button id="next" type="button">Next</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="detail" aria-labelledby="d-title">
+  <div class="d-head">
+    <h3 id="d-title">Review</h3>
+    <button id="d-close" type="button">Close</button>
+  </div>
+  <div id="d-body"></div>
+</dialog>
+
+<div id="tip" class="tip" role="tooltip" hidden></div>
+</body>
+</html>
