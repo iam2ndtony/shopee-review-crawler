@@ -78,15 +78,19 @@ def _classifier():
 
 
 def _predict(texts: list[str]) -> list[dict]:
-    clf = _classifier()
-    from vi_train.data import segment
     # Training data was cleaned with lowercase off (PhoBERT is case-sensitive); match it here.
-    cleaned = clean_texts(pd.Series(texts, dtype=object), dataclasses.replace(cfg, lowercase=False), table)
-    probs = clf.probs([segment(t) for t in cleaned])
-    labels = clf.cfg.labels
-    return [{"cleaned": c, "label": labels[int(p.argmax())],
-             "probs": {lab: round(float(x), 4) for lab, x in zip(labels, p)}}
-            for c, p in zip(cleaned, probs)]
+    cleaned = clean_texts(pd.Series(texts, dtype=object), dataclasses.replace(cfg, lowercase=False), table).tolist()
+    out = [{"cleaned": c, "label": None, "probs": None} for c in cleaned]  # blank text stays null
+    idx = [i for i, c in enumerate(cleaned) if c]
+    if idx:  # all-blank requests never load the model
+        clf = _classifier()
+        from vi_train.data import segment
+        probs = clf.probs([segment(cleaned[i]) for i in idx])
+        labels = clf.cfg.labels
+        for i, p in zip(idx, probs):
+            out[i].update(label=labels[int(p.argmax())],
+                          probs={lab: round(float(x), 4) for lab, x in zip(labels, p)})
+    return out
 
 
 @app.post("/predict")
