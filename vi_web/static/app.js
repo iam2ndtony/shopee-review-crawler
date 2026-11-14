@@ -258,6 +258,8 @@ function renderSummary(res) {
     notes.push('Held-out predictions: the model did not see this product when it made them.');
     if (s.not_predicted) notes.push(`${plural(s.not_predicted, 'review')} repeat a review from another product, have no held-out prediction, and show as not predicted.`);
   }
+  if (s.coin_farming_dropped) notes.push(`${plural(s.coin_farming_dropped, 'review')} held only a request for Shopee coins and ${s.coin_farming_dropped === 1 ? 'was' : 'were'} left out.`);
+  if (s.coin_phrase_trimmed) notes.push(`The Shopee coins phrase was cut from ${plural(s.coin_phrase_trimmed, 'review')}; the rest of each review was kept.`);
   if (s.date_range) notes.push(`Reviews from ${s.date_range[0]} to ${s.date_range[1]}.`);
   const box = $('notice');
   box.replaceChildren(...notes.map((n) => el('p', { text: n })));
@@ -357,13 +359,16 @@ function showError(msg) { const e = $('error'); e.textContent = msg; e.hidden = 
 function finish() { clearTimeout(timer); setBusy(false); $('ready').hidden = true; }
 
 async function poll(id) {
+  let lost = 0; // consecutive failed requests (server restarting, network blip)
   const tick = async () => {
     const r = await api('GET', `/analyze/jobs/${id}`);
+    if (r.status === 0 && ++lost < 5) { timer = setTimeout(tick, 1000); return; }
+    lost = 0;
     if (!r.ok) { finish(); showStatus(''); showError(errorText(r)); return; }
     const j = r.data;
     $('ready').hidden = j.state !== 'waiting_login';
     if (j.state === 'waiting_login') showStatus('A Chrome window opened with Shopee. If it asks you to log in, do that there, then press "I\'m ready".');
-    else if (j.state === 'crawling') showStatus(`Collecting reviews: ${num(j.collected)} so far…`);
+    else if (j.state === 'crawling') showStatus(`Collecting reviews with text: ${num(j.collected)} so far…`);
     else if (j.state === 'analyzing') showStatus('Analyzing reviews…');
     if (j.state === 'error') { finish(); showStatus(''); showError((j.error && j.error.message) || 'The analysis failed.'); return; }
     if (j.state === 'done') {
@@ -426,6 +431,8 @@ new ResizeObserver(() => {
 
 (async () => {
   const r = await api('GET', '/analyze/saved');
-  if (!r.ok) return;
-  for (const p of r.data) $('saved').append(el('option', { value: p.file, text: `${p.name.replace(/_/g, ' ')} (${num(p.reviews)} reviews)` }));
+  if (r.ok) for (const p of r.data) $('saved').append(el('option', { value: p.file, text: `${p.name.replace(/_/g, ' ')} (${num(p.reviews)} reviews)` }));
+  // A crawl keeps running on the server when the page reloads: pick it up again.
+  const a = await api('GET', '/analyze/active');
+  if (a.ok && a.data.job_id) { currentJob = a.data.job_id; setBusy(true); showStatus('Reconnecting to the running analysis…'); poll(currentJob); }
 })();

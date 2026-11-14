@@ -4,11 +4,13 @@ Run: uvicorn vi_clean.api:app
 The per-text stages run per request; MD5 duplicate detection is dataset-level and only
 happens inside /jobs/merge-clean (it needs the whole dataset).
 """
+import os
 import threading
 from typing import Annotated
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from .config import CleanConfig
@@ -24,6 +26,9 @@ table = load_teencode(cfg.teencode_path)
 app = FastAPI(title="Vietnamese review cleaning")
 _job_lock = threading.Lock()
 mount(app)  # the review-analysis page at / and its /analyze routes
+# Blocks DNS-rebinding: a page on another site that resolves to 127.0.0.1 would send its own Host header.
+app.add_middleware(TrustedHostMiddleware,
+                   allowed_hosts=os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost").split(","))
 
 
 class CleanIn(BaseModel):

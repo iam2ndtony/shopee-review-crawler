@@ -7,6 +7,7 @@ reviewer username, user id and avatar are dropped here and never leave this modu
 No retry past a refusal, no captcha solving: a refusal ends the job with a plain message.
 Scraping Shopee goes against its terms of service; this is for a few products on one machine.
 """
+import itertools
 import logging
 import re
 import threading
@@ -60,16 +61,25 @@ def keep_fields(item: dict) -> dict:
     }
 
 
+def _has_text(item) -> bool:
+    """True for a review item with a non-blank comment. Shopee's ratings endpoint has no filter we could
+    verify for this, so stars-only reviews are fetched with their page and dropped here."""
+    return isinstance(item, dict) and isinstance(item.get("comment"), str) and bool(item["comment"].strip())
+
+
 def wait_ready(ready: threading.Event, timeout_s: float) -> None:
     if not ready.wait(timeout_s):
         raise CrawlError("timeout", "Not marked ready in time. Start the analysis again.")
 
 
-def fetch_all(fetch_page: Callable[[int], dict], max_reviews: int, cfg: WebConfig,
+def fetch_all(fetch_page: Callable[[int], dict], max_reviews: int | None, cfg: WebConfig,
               on_progress: Callable[[int], None]) -> list[dict]:
-    """Page through the ratings endpoint (cfg.page_limit per request) until empty or max_reviews."""
+    """Page through the ratings endpoint (cfg.page_limit per request) until Shopee returns an empty
+    page; with max_reviews, stop there instead. max_reviews None means every review."""
     items: list[dict] = []
-    for offset in range(0, max_reviews, cfg.page_limit):
+    offsets = itertools.count(0, cfg.page_limit) if max_reviews is None else range(0, max_reviews, cfg.page_limit)
+    prev_first = None
+    for offset in offsets:
         resp = None
         for attempt in range(1, cfg.retries + 1):
             try:
@@ -91,15 +101,19 @@ def fetch_all(fetch_page: Callable[[int], dict], max_reviews: int, cfg: WebConfi
         ratings = (resp.get("data") or {}).get("ratings") or []
         if not ratings:
             break
-        items.extend(keep_fields(r) for r in ratings if isinstance(r, dict))
-        on_progress(min(len(items), max_reviews))
-        if len(items) >= max_reviews:
+        first = ratings[0].get("cmtid") if isinstance(ratings[0], dict) else None  # compared only, never kept
+        if first is not None and first == prev_first:  # the endpoint ignored the offset: no new reviews, stop
+            break
+        prev_first = first
+        items.extend(keep_fields(r) for r in ratings if _has_text(r))  # stars-only reviews are skipped here
+        on_progress(len(items) if max_reviews is None else min(len(items), max_reviews))
+        if max_reviews is not None and len(items) >= max_reviews:
             break
         time.sleep(cfg.delay_s)
     return items[:max_reviews]
 
 
-def crawl(shop_id: str, item_id: str, max_reviews: int, cfg: WebConfig, ready: threading.Event,
+def crawl(shop_id: str, item_id: str, max_reviews: int | None, cfg: WebConfig, ready: threading.Event,
           on_state: Callable[[str], None], on_progress: Callable[[int], None]) -> list[dict]:
     """Open Chrome with the saved login, wait for "ready", then fetch the reviews."""
     try:

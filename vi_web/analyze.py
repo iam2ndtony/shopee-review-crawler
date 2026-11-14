@@ -12,7 +12,7 @@ import pandas as pd
 
 from vi_clean.config import CleanConfig
 from vi_clean.predictor import predict_texts, serve_run
-from vi_clean.stages import clean_texts, low_ttr_mask, md5_key
+from vi_clean.stages import clean_texts, low_ttr_mask, md5_key, strip_coin_phrase
 from vi_clean.teencode import load_teencode
 from vi_train.config import TrainConfig
 
@@ -83,9 +83,17 @@ def _load_saved(file: str, cfg: WebConfig) -> list[dict]:
     return json.loads((cfg.saved_dir / file).read_text(encoding="utf-8"))
 
 
-def saved_product_ids(cfg: WebConfig) -> set[str]:
-    """Product ids of the saved files: the products the final model was trained on."""
-    return {product_id_of(_load_saved(p["file"], cfg)) for p in list_saved(cfg)} - {""}
+def _oof_path():
+    return TrainConfig().work_dir / "preds" / serve_run() / "shopee_oof.csv"
+
+
+def trained_product_ids() -> set[str]:
+    """Product ids in the served run's held-out table: the products its model was trained on."""
+    try:
+        oof = pd.read_csv(_oof_path(), encoding="utf-8-sig", keep_default_na=False, dtype=str, usecols=["product_id"])
+    except FileNotFoundError:
+        return set()
+    return set(oof["product_id"]) - {""}
 
 
 def analyze_saved(file: str, cfg: WebConfig) -> dict:
@@ -97,22 +105,24 @@ def analyze_saved(file: str, cfg: WebConfig) -> dict:
     product's fold model trained on this one), so it stays "not predicted".
     """
     items = _load_saved(file, cfg)
-    df = flag_frame(reviews_frame(items))
+    df, dropped, trimmed = _drop_coin(reviews_frame(items))
+    df = flag_frame(df)
     tcfg = TrainConfig()
-    oof = pd.read_csv(tcfg.work_dir / "preds" / serve_run() / "shopee_oof.csv", encoding="utf-8-sig",
-                      keep_default_na=False, dtype=str)
+    oof = pd.read_csv(_oof_path(), encoding="utf-8-sig", keep_default_na=False, dtype=str)
     oof = oof[oof["product_id"] == product_id_of(items)]
     # `pred` is the model's held-out prediction; `y` is the true star-derived label and must not be shown as one.
     by_key = {md5_key(t): tcfg.labels[int(p)] for t, p in zip(oof["text"], oof["pred"])}
-    df["label"] = [by_key.get(md5_key(c)) if c else None for c in df["cleaned"]]
+    # Match on the review as it was in the dataset, before the coin phrase was cut.
+    raw_clean = clean_texts(df["raw"], _CFG, _TABLE)
+    df["label"] = [by_key.get(md5_key(r)) if c else None for r, c in zip(raw_clean, df["cleaned"])]
     df["probs"] = None  # the saved predictions store labels only
-    return build_analysis(df, "saved", False)
+    return build_analysis(df, "saved", False, dropped, trimmed)
 
 
 def analyze_live(items: list[dict], cfg: WebConfig | None = None) -> dict:
     """Analysis of freshly crawled reviews with the final model; probabilities are included."""
-    cfg = cfg or WebConfig()
-    df = flag_frame(reviews_frame(items))
+    df, dropped, trimmed = _drop_coin(reviews_frame(items))
+    df = flag_frame(df)
     df["label"], df["probs"] = None, None
     idx = df.index[df["text"] != ""].tolist()
     if idx:
@@ -121,8 +131,8 @@ def analyze_live(items: list[dict], cfg: WebConfig | None = None) -> dict:
         df["probs"] = df["probs"].astype(object)
         for i, p in zip(idx, preds):
             df.at[i, "label"], df.at[i, "probs"] = p["label"], p["probs"]
-    warn = product_id_of(items) in saved_product_ids(cfg)
-    return build_analysis(df, "live", warn)
+    warn = product_id_of(items) in trained_product_ids()
+    return build_analysis(df, "live", warn, dropped, trimmed)
 
 
 def _disagrees(stars: int, label) -> bool:
@@ -133,8 +143,21 @@ def _count(rows: pd.DataFrame) -> dict:
     return {lab: int((rows["label"] == lab).sum()) for lab in LABELS}
 
 
-def build_analysis(df: pd.DataFrame, mode: str, training_data_warning: bool) -> dict:
-    """The result JSON. `df` needs the flag_frame columns plus `label` (str or None) and `probs` (dict or None)."""
+def _drop_coin(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
+    """Cut the "nhan xu" phrase out of reviews; a review with nothing else left is removed.
+
+    Returns the frame (with `raw`, the text before the cut), how many reviews were removed and how many trimmed.
+    Done first, so the cut text is what gets cleaned, predicted and compared for duplicates."""
+    cut = df["text"].map(lambda t: strip_coin_phrase(t, _CFG) if t else t)
+    changed = cut != df["text"]
+    gone = changed & (cut == "")
+    out = df.assign(raw=df["text"], text=cut)
+    return out[~gone].reset_index(drop=True), int(gone.sum()), int((changed & ~gone).sum())
+
+
+def build_analysis(df: pd.DataFrame, mode: str, training_data_warning: bool, dropped: int = 0, trimmed: int = 0) -> dict:
+    """The result JSON. `df` needs the flag_frame columns plus `label` (str or None) and `probs` (dict or None).
+    `dropped` is how many reviews held only a coin phrase and were removed; `trimmed` how many had it cut out."""
     text_df = df[df["text"] != ""]
     pred = text_df[text_df["label"].notna()]
     n_pred = len(pred)
@@ -159,7 +182,8 @@ def build_analysis(df: pd.DataFrame, mode: str, training_data_warning: bool) -> 
             "duplicates": int(text_df["duplicate"].sum()), "repetitive": int(text_df["repetitive"].sum()),
             "disagreements": sum(v["disagrees"] for v in reviews),
             "date_range": [dates.min(), dates.max()] if len(dates) else None,
-            "mode": mode, "training_data_warning": training_data_warning,
+            "mode": mode, "training_data_warning": training_data_warning, "coin_farming_dropped": dropped,
+            "coin_phrase_trimmed": trimmed,
         },
         "stars_all": {str(s): int((df["stars"] == s).sum()) for s in range(1, 6)},
         "sentiment_counts": counts,

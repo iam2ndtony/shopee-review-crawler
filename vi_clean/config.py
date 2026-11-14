@@ -26,6 +26,13 @@ class CleanConfig:
     min_tokens_for_ttr: int = 5
     ttr_min: float = 0.3
     expected_total: int = 34250
+    # Coin-incentive reviews: the text says it is written only to earn Shopee coins ("... mang tinh chat nhan xu").
+    # `strip_coin_phrase` cuts "nhan/lay ... xu" (matched on text folded to ASCII) out of a review, and removes a
+    # short review that is all phrase: it fuzzy-matches these folded phrases (ratio >= coin_fuzzy_min, up to
+    # coin_fuzzy_max_tokens tokens) so typos still hit.
+    coin_phrases: tuple[str, ...] = ("hinh anh va video binh luan mang tinh chat nhan xu",)
+    coin_fuzzy_min: float = 0.8
+    coin_fuzzy_max_tokens: int = 12
     star_to_label: dict[int, str] = field(default_factory=lambda: {
         1: "negative", 2: "negative", 3: "neutral", 4: "positive", 5: "positive"})
     uit_label_map: dict[int, str] = field(default_factory=lambda: {

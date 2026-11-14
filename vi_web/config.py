@@ -10,9 +10,6 @@ from pathlib import Path
 
 from vi_clean.config import ROOT
 
-MAX_CAP = 3000  # hard cap on reviews per live crawl
-
-
 def _env_path(name: str, default: Path) -> Path:
     return Path(os.environ.get(name) or default)
 
@@ -21,8 +18,6 @@ def _env_path(name: str, default: Path) -> Path:
 class WebConfig:
     saved_dir: Path = field(default_factory=lambda: _env_path("SAVED_REVIEWS_DIR", ROOT / "raw_reviews"))
     profile_dir: Path = field(default_factory=lambda: _env_path("SHOPEE_PROFILE_DIR", ROOT / "shopee_chrome_profile"))
-    default_max: int = 1000
-    max_cap: int = MAX_CAP
     ready_timeout_s: float = 600  # a job not marked ready within this ends as an error
     max_jobs: int = 5
     page_limit: int = 50  # reviews per ratings request

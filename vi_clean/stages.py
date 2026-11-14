@@ -12,6 +12,7 @@ Choices (all parameters live in CleanConfig):
 import hashlib
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 import pandas as pd
 
@@ -76,6 +77,40 @@ def _md5_key(text: str) -> str:
 
 
 md5_key = _md5_key  # public name: the web demo matches reviews to dataset rows with the same key
+
+# "nhan xu", "lay xu", "nhan thuong lay xu", "xuuu", "nhann xu"; and the typo "tinh chat nhan su" (su for xu), kept
+# to that exact wording so "nhan xet" (a comment) and "nhan su" (staff) in other reviews do not match.
+_COIN = re.compile(r"\b(?:nhan+|lay)\s+(?:\w+\s+){0,2}?xu+\b|\btinh (?:chat )?nhan+ su\b")
+
+
+def _fold(text: str) -> str:
+    """Lowercase ASCII without tone marks or punctuation, so 'nhận xu', 'nhan xu' and 'Nhận xuuu.' compare alike."""
+    t = unicodedata.normalize("NFKD", text.lower().replace("đ", "d"))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return _SPACE.sub(" ", _PUNCT.sub(" ", t)).strip()
+
+
+def strip_coin_phrase(text: str, cfg: CleanConfig) -> str:
+    """The review without its "nhan xu" phrase; "" when nothing else is left.
+
+    A short review close to a cfg.coin_phrases entry is all phrase, so it goes whole. Otherwise only the
+    words the regex matches are cut and the rest of the review is kept."""
+    folded_all = _fold(text)
+    if 0 < len(folded_all.split()) <= cfg.coin_fuzzy_max_tokens and any(
+            SequenceMatcher(None, folded_all, p).ratio() >= cfg.coin_fuzzy_min for p in cfg.coin_phrases):
+        return ""
+    words = text.split()
+    folded, spans, pos = [], [], 0
+    for w in words:
+        f = _fold(w)
+        spans.append((pos, pos + len(f)))
+        folded.append(f)
+        pos += len(f) + 1
+    cut = set()
+    for m in _COIN.finditer(" ".join(folded)):
+        cut.update(i for i, (a, b) in enumerate(spans) if a < m.end() and b > m.start())
+    kept = " ".join(w for i, w in enumerate(words) if i not in cut)
+    return kept if _fold(kept) else ""
 
 
 def drop_md5_duplicates(df: pd.DataFrame, cfg: CleanConfig) -> tuple[pd.DataFrame, int]:

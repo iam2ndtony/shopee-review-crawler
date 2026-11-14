@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .analyze import analyze_saved, list_saved
-from .config import MAX_CAP, WebConfig
+from .config import WebConfig
 from .jobs import Busy, JobStore
 
 STATIC = Path(__file__).parent / "static"
@@ -20,7 +20,7 @@ STATIC = Path(__file__).parent / "static"
 
 class LinkIn(BaseModel):
     url: str = Field(max_length=2000)
-    max_reviews: int | None = Field(default=None, ge=1, le=MAX_CAP)
+    max_reviews: int | None = Field(default=None, ge=1)  # omitted: crawl every review
 
 
 class SavedIn(BaseModel):
@@ -60,6 +60,11 @@ def build_router(cfg: WebConfig | None = None, store: JobStore | None = None) ->
         except Busy:
             raise HTTPException(status_code=409, detail="Another analysis is already running")
         return {"job_id": job.id}
+
+    @r.get("/active")
+    def active() -> dict:
+        job = store.active()
+        return {"job_id": job.id if job else None, "state": job.state if job else None}
 
     @r.get("/jobs/{job_id}")
     def job_status(job_id: str) -> dict:

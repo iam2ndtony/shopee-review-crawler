@@ -17,6 +17,10 @@ ACTIVE = {"waiting_login", "crawling", "analyzing"}
 class Busy(Exception):
     """Another live analysis is still running."""
 
+    def __init__(self, job_id: str):
+        super().__init__(job_id)
+        self.job_id = job_id
+
 
 @dataclass
 class Job:
@@ -37,10 +41,11 @@ class JobStore:
     def start(self, url: str, max_reviews: int | None) -> Job:
         """ValueError for a bad link, Busy while another job is active; otherwise runs on a daemon thread."""
         shop_id, item_id = parse_product_url(url)
-        limit = self.cfg.default_max if max_reviews is None else min(max(max_reviews, 1), self.cfg.max_cap)
+        limit = None if max_reviews is None else max(max_reviews, 1)  # None: every review Shopee returns
         with self._lock:
-            if any(j.state in ACTIVE for j in self._jobs.values()):
-                raise Busy()
+            running = next((j for j in self._jobs.values() if j.state in ACTIVE), None)
+            if running:
+                raise Busy(running.id)
             job = Job(id=uuid.uuid4().hex[:12])
             self._jobs[job.id] = job
             for old in [j.id for j in self._jobs.values() if j.state not in ACTIVE]:
@@ -53,7 +58,11 @@ class JobStore:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
-    def _run(self, job: Job, shop_id: str, item_id: str, limit: int) -> None:
+    def active(self) -> Job | None:
+        """The running job, so a page that lost its id (reload, dropped poll) can pick it up again."""
+        return next((j for j in self._jobs.values() if j.state in ACTIVE), None)
+
+    def _run(self, job: Job, shop_id: str, item_id: str, limit: int | None) -> None:
         def fail(code: str, message: str) -> None:
             job.error = {"code": code, "message": message}
             job.state = "error"
@@ -71,3 +80,8 @@ class JobStore:
         except Exception as e:  # log the type only: messages and tracebacks could carry review text
             log.error("job %s failed: %s", job.id, type(e).__name__)
             fail("internal", "Something went wrong while analysing the reviews.")
+        finally:
+            # A BaseException (Playwright's greenlets raise GreenletExit) skips the handlers above; without this the
+            # job would stay active forever and every later start would be refused.
+            if job.state in ACTIVE:
+                fail("internal", "The analysis stopped unexpectedly. Start it again.")
