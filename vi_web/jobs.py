@@ -1,5 +1,7 @@
-"""In-memory job store for live analyses: one active job at a time, nothing written to disk."""
+"""In-memory job store for live analyses: one active job at a time. Crawled reviews are also saved to disk."""
+import json
 import logging
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -62,6 +64,16 @@ class JobStore:
         """The running job, so a page that lost its id (reload, dropped poll) can pick it up again."""
         return next((j for j in self._jobs.values() if j.state in ACTIVE), None)
 
+    def _save(self, items: list[dict], shop_id: str, item_id: str) -> None:
+        """Keep the crawl in <saved_dir>/crawled/ (a re-crawl of the same product replaces it). The sub-folder keeps it
+        out of the saved-product list, whose analysis needs held-out predictions a new product does not have."""
+        folder = self.cfg.saved_dir / "crawled"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{shop_id}_{item_id}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+
     def _run(self, job: Job, shop_id: str, item_id: str, limit: int | None) -> None:
         def fail(code: str, message: str) -> None:
             job.error = {"code": code, "message": message}
@@ -70,6 +82,7 @@ class JobStore:
         try:
             items = self.crawl_fn(shop_id, item_id, limit, self.cfg, job.ready,
                                   lambda s: setattr(job, "state", s), lambda c: setattr(job, "collected", c))
+            self._save(items, shop_id, item_id)
             job.state = "analyzing"
             job.result = self.analyze_fn(items)
             job.state = "done"
