@@ -28,8 +28,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--gold", type=Path, required=True)
     ap.add_argument("--run", default="phobert-p0.5", help="run whose stage-1 checkpoint and weight power are reused")
     ap.add_argument("--epochs", type=int, default=4)
+    ap.add_argument("--seed", type=int, default=42, help="seed of the head init, batching and the validation split")
     args = ap.parse_args(argv)
-    cfg = dataclasses.replace(TrainConfig(), run=args.run, weight_power=0.5, stage2_epochs=args.epochs)
+    cfg = dataclasses.replace(TrainConfig(), run=args.run, weight_power=0.5, stage2_epochs=args.epochs, seed=args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     g = pd.read_csv(args.gold, encoding="utf-8-sig")

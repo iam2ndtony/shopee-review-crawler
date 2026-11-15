@@ -25,7 +25,13 @@ def segment(text: str) -> str:
 def prepare(cfg: TrainConfig) -> pd.DataFrame:
     """Run the cleaning job (lowercase off), add segmented text `seg` and label id `y`."""
     clean_cfg = dataclasses.replace(
-        CleanConfig(), lowercase=False, shopee_dir=cfg.shopee_dir, out_dir=cfg.work_dir / "clean")
+        CleanConfig(), lowercase=False, shopee_dir=cfg.shopee_dir, out_dir=cfg.work_dir / "clean" / cfg.run)
+    if cfg.ablate:  # cleaning ablation: leave one stage out (dedup always stays, it prevents leakage)
+        if cfg.ablate == "ttr":
+            clean_cfg = dataclasses.replace(clean_cfg, ttr_min=0.0)
+        else:
+            clean_cfg = dataclasses.replace(
+                clean_cfg, stage_order=tuple(s for s in clean_cfg.stage_order if s != cfg.ablate))
     run_job(clean_cfg)
     # keep_default_na=False: texts like "nan" or "null" must stay text, not become NaN.
     df = pd.read_csv(clean_cfg.out_dir / "dataset.csv", encoding="utf-8-sig", keep_default_na=False,

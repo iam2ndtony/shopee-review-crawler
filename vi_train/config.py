@@ -36,6 +36,8 @@ class TrainConfig:
     weight_power: float = 1.0
     # PhoBERT needs word-segmented input; XLM-R (SentencePiece) does not.
     segment: bool = True
+    # Cleaning ablation: one of "nfc", "regex", "teencode", "ttr" leaves that stage out; "" is the full pipeline.
+    ablate: str = ""
 
     @property
     def run_ckpt(self) -> Path:
