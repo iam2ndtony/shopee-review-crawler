@@ -6,6 +6,7 @@ not listed or predicted. A review is "not predicted" when it has text but no lab
 """
 import dataclasses
 import json
+import re
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -75,7 +76,9 @@ def list_saved(cfg: WebConfig) -> list[dict]:
             except (OSError, ValueError):
                 continue
             if isinstance(data, list):
-                out.append({"file": sub + p.name, "name": p.stem + tag, "reviews": len(data)})
+                # crawled files are <name>_<shop>_<item>: show the name without the ids
+                name = re.sub(r"_\d+_\d+$", "", p.stem).replace("-", " ") if sub else p.stem
+                out.append({"file": sub + p.name, "name": name + tag, "reviews": len(data)})
     return out
 
 

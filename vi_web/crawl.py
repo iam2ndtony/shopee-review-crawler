@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from typing import Callable
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .config import WebConfig
 
@@ -49,6 +49,12 @@ def parse_product_url(url: str) -> tuple[str, str]:
         if m:
             return m.group(1), m.group(2)
     raise ValueError("The link has no shop and item id (expected ...-i.<shop>.<item>)")
+
+
+def product_slug(url: str) -> str:
+    """The product name Shopee puts in a link (.../Name-of-product-i.<shop>.<item>), file-safe and short; '' if the link has none."""
+    m = re.match(r"^/(.+)-i\.\d+\.\d+$", unquote(urlparse(url.strip()).path))
+    return re.sub(r"[^\w-]+", "-", m.group(1)).strip("-")[:60] if m else ""
 
 
 def keep_fields(item: dict) -> dict:
