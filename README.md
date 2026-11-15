@@ -56,5 +56,19 @@ python -m vi_train.evaluate --run phobert-p1.0      # ghi reports/<run>.json (Ma
 uvicorn vi_clean.api:app                            # thêm POST /predict và /predict/batch (503 nếu chưa có checkpoints/<run>/final)
 ```
 - Mỗi lần chạy là một "run": `--run NAME` đặt tên, `--model` đổi mô hình (vd. `FacebookAI/xlm-roberta-base`), `--weight-power P` làm mềm trọng số lớp (`(N/(K*n_c))**P`, mặc định 1.0), `--no-segment` bỏ tách từ (dùng cho XLM-R). Huấn luyện từ chối ghi đè một run đã có; dùng `--overwrite` nếu thật sự muốn.
-- API phục vụ run trong biến môi trường `VI_RUN` (mặc định `phobert-p1.0`); `/predict` trả `label: null` cho văn bản trống.
+- API phục vụ run trong biến môi trường `VI_RUN` (mặc định `phobert-p0.5`, run được chọn bằng điểm validation); `/predict` trả `label: null` cho văn bản trống.
 - Kết quả xem trong `reports/<run>.json`; tập giữ lại không phải Gold Set do người gán nhãn, và nhãn Shopee suy ra từ số sao.
+
+### 5. Trang web phân tích review (`vi_web/`)
+Dán link sản phẩm Shopee để xem EDA cảm xúc do mô hình dự đoán và mở từng review; hoặc mở một sản phẩm đã lưu.
+```powershell
+$env:SAVED_REVIEWS_DIR = "C:\duong\dan\raw_reviews"   # thư mục các file review đã cào (mặc định <repo>\raw_reviews)
+uvicorn vi_clean.api:app                              # mở http://127.0.0.1:8000/
+```
+- **Chỉ dùng trên máy của bạn.** API không có xác thực; đừng mở ra mạng ngoài. Không có gì được lưu lại, review chỉ nằm trong bộ nhớ của tiến trình.
+- **Sản phẩm đã lưu:** dùng dự đoán giữ-lại (held-out) của leave-one-product-out, nên mô hình chưa thấy sản phẩm đó. Review trùng với review của sản phẩm khác không có dự đoán giữ-lại và hiện là "not predicted". Chế độ này không có xác suất.
+- **Link Shopee:** máy chủ mở một cửa sổ Chrome bằng hồ sơ đăng nhập đã lưu (`SHOPEE_PROFILE_DIR`, mặc định `<repo>\shopee_chrome_profile`). Nếu Shopee yêu cầu đăng nhập, hãy đăng nhập trong cửa sổ đó rồi bấm "I'm ready". Dùng mô hình cuối cùng (`VI_RUN`), nên sản phẩm nằm trong dữ liệu huấn luyện sẽ có cảnh báo.
+- Chrome chỉ cho một phiên trên mỗi hồ sơ: đóng crawler tự chạy của bạn trước khi dùng. Shopee có thể từ chối (403, đăng nhập, captcha); trang chỉ báo lỗi, không tự thử lại và không vượt qua. Cào Shopee trái điều khoản của họ, chỉ dùng cho vài sản phẩm.
+- Một lần cào lấy **toàn bộ** review Shopee trả về (dừng khi hết trang), không có giới hạn, nhưng **chỉ giữ review có nội dung chữ**: review chỉ có sao bị bỏ ngay khi cào (Shopee vẫn trả cả trang, nên thời gian không giảm). Mỗi 50 review mất khoảng 1 giây, nên sản phẩm 3.000 review cần chừng 1 phút và sản phẩm 30.000 review chừng 10 phút; trang không có nút hủy, và kết quả đều nằm trong bộ nhớ. API vẫn nhận `max_reviews` tùy chọn nếu muốn giới hạn.
+- Cụm xin xu Shopee (ví dụ "Hình ảnh và video bình luận mang tính chất nhận xu", kể cả gõ sai hoặc không dấu) được cắt khỏi review trước khi phân tích, phần còn lại giữ nguyên; review chỉ có cụm đó thì bị bỏ. Trang ghi số review bị bỏ và số review bị cắt. Luật nằm ở `strip_coin_phrase` (`vi_clean/stages.py`), chỉ áp dụng cho web demo, không đổi bộ dữ liệu huấn luyện.
+- Web demo chỉ nhận Host `127.0.0.1` và `localhost`; đặt biến `ALLOWED_HOSTS` (cách nhau bằng dấu phẩy) nếu chạy qua tên khác.

@@ -4,17 +4,20 @@ Run: uvicorn vi_clean.api:app
 The per-text stages run per request; MD5 duplicate detection is dataset-level and only
 happens inside /jobs/merge-clean (it needs the whole dataset).
 """
-import dataclasses
 import os
 import threading
 from typing import Annotated
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from .config import CleanConfig
 from .merge import run_job
+from vi_web.routes import mount
+
+from .predictor import ModelMissing, predict_texts
 from .stages import clean_texts, low_ttr_mask
 from .teencode import load_teencode
 
@@ -22,6 +25,10 @@ cfg = CleanConfig()
 table = load_teencode(cfg.teencode_path)
 app = FastAPI(title="Vietnamese review cleaning")
 _job_lock = threading.Lock()
+mount(app)  # the review-analysis page at / and its /analyze routes
+# Blocks DNS-rebinding: a page on another site that resolves to 127.0.0.1 would send its own Host header.
+app.add_middleware(TrustedHostMiddleware,
+                   allowed_hosts=os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost").split(","))
 
 
 class CleanIn(BaseModel):
@@ -59,41 +66,11 @@ class PredictBatchIn(BaseModel):
     texts: list[Annotated[str, Field(max_length=MAX_PREDICT_CHARS)]] = Field(min_length=1, max_length=64)
 
 
-_clf = None
-_clf_lock = threading.Lock()
-
-
-def _classifier():
-    """Load the final checkpoint of run $VI_RUN once, on first use (keeps torch out of /clean's startup)."""
-    global _clf
-    with _clf_lock:
-        if _clf is None:
-            from vi_train.config import TrainConfig
-            tcfg = TrainConfig()
-            tcfg = dataclasses.replace(tcfg, run=os.environ.get("VI_RUN", tcfg.run))
-            path = tcfg.run_ckpt / "final"
-            if not path.is_dir():
-                raise HTTPException(status_code=503, detail=f"Model not trained yet: checkpoints/{tcfg.run}/final is missing")
-            from vi_train.predict import Classifier
-            _clf = Classifier.from_dir(path, tcfg)
-        return _clf
-
-
 def _predict(texts: list[str]) -> list[dict]:
-    # Training data was cleaned with lowercase off (PhoBERT is case-sensitive); match it here.
-    cleaned = clean_texts(pd.Series(texts, dtype=object), dataclasses.replace(cfg, lowercase=False), table).tolist()
-    out = [{"cleaned": c, "label": None, "probs": None} for c in cleaned]  # blank text stays null
-    idx = [i for i, c in enumerate(cleaned) if c]
-    if idx:  # all-blank requests never load the model
-        clf = _classifier()
-        from vi_train.data import segment
-        inputs = [segment(cleaned[i]) if clf.segment else cleaned[i] for i in idx]  # XLM-R takes plain text
-        probs = clf.probs(inputs)
-        labels = clf.cfg.labels
-        for i, p in zip(idx, probs):
-            out[i].update(label=labels[int(p.argmax())],
-                          probs={lab: round(float(x), 4) for lab, x in zip(labels, p)})
-    return out
+    try:
+        return predict_texts(texts)
+    except ModelMissing as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @app.post("/predict")

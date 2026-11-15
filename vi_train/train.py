@@ -106,10 +106,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--weight-power", type=float, default=None, help="class weight = (N/(K*n_c))**power (default 1.0)")
     ap.add_argument("--no-segment", action="store_true", help="skip word segmentation (for SentencePiece models like XLM-R)")
     ap.add_argument("--overwrite", action="store_true", help="replace an existing run of the same name")
+    ap.add_argument("--seed", type=int, default=None, help="seed for the head init, batching and splits (default 42)")
+    ap.add_argument("--ablate", default=None, choices=["nfc", "regex", "teencode", "ttr"],
+                    help="leave one cleaning stage out of the pipeline")
     args = ap.parse_args(argv)
     cfg = TrainConfig()
     overrides = {"shopee_dir": args.shopee_dir, "run": args.run, "model_name": args.model,
-                 "weight_power": args.weight_power, "segment": False if args.no_segment else None}
+                 "weight_power": args.weight_power, "segment": False if args.no_segment else None,
+                 "seed": args.seed, "ablate": args.ablate}
     cfg = dataclasses.replace(cfg, **{k: v for k, v in overrides.items() if v is not None})
     # Without --run the default name is the baseline, which cannot be regenerated exactly: never overwrite silently.
     if cfg.run_ckpt.exists() and not args.overwrite:
