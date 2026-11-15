@@ -65,15 +65,17 @@ def flag_frame(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def list_saved(cfg: WebConfig) -> list[dict]:
-    """Saved review files (JSON lists) in cfg.saved_dir, sorted by name."""
+    """Saved review files (JSON lists) in cfg.saved_dir, then the live crawls in its crawled/ folder."""
     out = []
-    for p in sorted(cfg.saved_dir.glob("*.json")) if cfg.saved_dir.is_dir() else []:
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, list):
-            out.append({"file": p.name, "name": p.stem, "reviews": len(data)})
+    for sub, tag in (("", ""), ("crawled/", " (crawled)")):
+        folder = cfg.saved_dir / sub
+        for p in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, list):
+                out.append({"file": sub + p.name, "name": p.stem + tag, "reviews": len(data)})
     return out
 
 
@@ -105,6 +107,8 @@ def analyze_saved(file: str, cfg: WebConfig) -> dict:
     product's fold model trained on this one), so it stays "not predicted".
     """
     items = _load_saved(file, cfg)
+    if file.startswith("crawled/"):  # a new product has no held-out predictions: the final model has not seen it
+        return analyze_live(items, cfg)
     df, dropped, trimmed = _drop_coin(reviews_frame(items))
     df = flag_frame(df)
     tcfg = TrainConfig()
